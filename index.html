@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Compteur de silence — jours sans réponse recruteur</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="chart.css">
 </head>
 <body>
  
@@ -19,7 +20,7 @@
  
   <div class="screen">
     <div class="counter-label">ma plus vieille candidature sans réponse</div>
-    <div class="counter-digits" id="dayCounter">--</div>jours
+    <div class="counter-digits" id="dayCounter">--</div>
     <div class="counter-sub" id="counterSub">chargement</div>
   </div>
  
@@ -48,16 +49,25 @@
  
   <div class="footer-text">dernière synchro : <span id="lastSync">--</span></div>
  
+  <div class="chart-block">
+    <div class="chart-title">candidatures / semaine</div>
+    <div class="chart-sub">hors candidatures rapides (Indeed / LinkedIn)</div>
+    <div class="chart-wrap">
+      <canvas id="weekChart"></canvas>
+    </div>
+  </div>
+ 
   <div class="coffee-block">
     <div class="coffee-title">☕ café du chômariat</div>
-    <div class="coffee-sub">8 mois de loyer de bureau payé en expressos.<br>un petit café (viral) m'aiderait autant qu'un vrai.</div>
+    <div class="coffee-sub">Je partage mes aventures sur ce compte, rejoingez-nous !</div>
     <div class="qr-wrap">
       <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https%3A%2F%2Finstagram.com%2Fchomariat_lifestyle" alt="QR code Instagram @chomariat_lifestyle" width="120" height="120">
     </div>
-    <div class="coffee-handle">@chomariat_lifestyle</div>
-  </div>
+    <div class="coffee-handle"><a href="https://instagram.com/chomariat_lifestyle" target="_blank">@chomariat_lifestyle</a></div>
 </div>
  
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
+ 

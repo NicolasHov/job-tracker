@@ -1,11 +1,4 @@
 // Fonction serverless Vercel — /api/stats
-// Interroge la base Notion et renvoie :
-//   - daysSinceOldest : jours depuis la plus ANCIENNE candidature "En attente" (sans Last Contact récent)
-//   - pendingCount    : nombre de candidatures "En attente"
-//   - expiredCount    : nombre de candidatures "Périmé" (ghostées, sans réponse)
-//   - totalApplications : candidatures actives (hors Backlog, À faire, Abandonné, et avant mars 2025)
-//   - recordDays      : record de silence partagé, stocké dans Upstash Redis
- 
 import { Redis } from '@upstash/redis';
  
 const STATUS_EXCLUDED = ['Backlog', 'À faire', 'Abandonné'];
@@ -20,6 +13,15 @@ function getDateValue(page, propName) {
   const prop = page.properties[propName];
   if (prop?.type === 'date' && prop.date?.start) return new Date(prop.date.start);
   return null;
+}
+ 
+// Retourne le lundi de la semaine d'une date donnée (clé "YYYY-MM-DD")
+function getWeekKey(date) {
+  const d = new Date(date);
+  const day = d.getDay(); // 0=dim, 1=lun...
+  const diff = (day === 0 ? -6 : 1 - day);
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0, 10);
 }
  
 export default async function handler(req, res) {
@@ -60,14 +62,15 @@ export default async function handler(req, res) {
       startCursor = data.next_cursor;
     }
  
-    // ── 2. Total actif : hors Backlog, À faire, Abandonné + filtre mars 2025 ─
-    const totalApplications = allResults.filter(page => {
+    // ── 2. Pages actives (hors exclus + filtre mars 2025) ────────────────────
+    const activePages = allResults.filter(page => {
       const status = getStatusValue(page, STATUS_PROP);
       if (STATUS_EXCLUDED.includes(status)) return false;
       const date = getDateValue(page, DATE_PROP);
       if (!date || date < DATE_CUTOFF) return false;
       return true;
-    }).length;
+    });
+    const totalApplications = activePages.length;
  
     // ── 3. Candidatures "En attente" ─────────────────────────────────────────
     const pendingPages = allResults.filter(page =>
@@ -75,15 +78,13 @@ export default async function handler(req, res) {
     );
     const pendingCount = pendingPages.length;
  
-    // ── 4. Candidatures "Périmé" (ghostées) ──────────────────────────────────
+    // ── 4. Candidatures "Périmé" ─────────────────────────────────────────────
     const expiredCount = allResults.filter(page =>
       getStatusValue(page, STATUS_PROP) === STATUS_EXPIRED
     ).length;
  
-    // ── 5. Plus ANCIENNE date de Last Contact parmi les "En attente" ─────────
-    //    (= silence le plus long = chiffre le plus percutant)
+    // ── 5. Plus ancienne date parmi les "En attente" ──────────────────────────
     let oldestPendingDate = null;
- 
     for (const page of pendingPages) {
       const d = getDateValue(page, DATE_PROP);
       if (d && (!oldestPendingDate || d < oldestPendingDate)) {
@@ -91,13 +92,27 @@ export default async function handler(req, res) {
       }
     }
  
-    // ── 6. Calcul des jours depuis cette date ─────────────────────────────────
+    // ── 6. Jours depuis la plus ancienne ─────────────────────────────────────
     let daysSinceOldest = 0;
     if (oldestPendingDate) {
       daysSinceOldest = Math.floor((Date.now() - oldestPendingDate) / 86_400_000);
     }
  
-    // ── 7. Record partagé via Upstash Redis ───────────────────────────────────
+    // ── 7. Candidatures par semaine — basé sur created_time (date de création
+    //    de la ligne Notion, proxy de la date d'envoi réelle) ─────────────────
+    const weekMap = {};
+    for (const page of activePages) {
+      const d = page.created_time ? new Date(page.created_time) : null;
+      if (!d) continue;
+      const key = getWeekKey(d);
+      weekMap[key] = (weekMap[key] || 0) + 1;
+    }
+    // Trier par date croissante et formater en tableau
+    const weeklyData = Object.entries(weekMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([week, count]) => ({ week, count }));
+ 
+    // ── 8. Record partagé via Upstash Redis ───────────────────────────────────
     let record = 0;
     try {
       const redis = new Redis({
@@ -119,6 +134,7 @@ export default async function handler(req, res) {
       pendingCount,
       expiredCount,
       totalApplications,
+      weeklyData,
       recordDays: record,
       updatedAt:  new Date().toISOString()
     });
